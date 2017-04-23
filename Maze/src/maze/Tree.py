@@ -21,8 +21,11 @@ class Node:
 		self.marks=0
 		
 		
+		
+		
 	
 	def retMark(self):
+		print("you made it! ",self.marks)
 		return self.marks
 	
 	def sever(self, direct):
@@ -41,15 +44,19 @@ class Node:
 	
 	def retExt(self):
 		return self.isExt==1
+	
+	#set if a node is a junction, -1 for undiscovered, 0 for no, 1 for yes
+	def setJunct(self, set):
+		self.isJunct=set
 
 	
 class Maze:
 	def __init__(self):
 		self.root=0
 		self.NUMCOL=2
-		self.NUMCOL=self.NUMCOL+2
-		self.NUMROW=2
-		self.NUMROW=self.NUMROW+2
+		self.NUMCOL=0
+		self.NUMROW=0
+		self.NUMROW=0
 
 		
 	def add(self):
@@ -115,12 +122,12 @@ class Maze:
 			return currNode
 
 	def create(self, cols, rows):
-			self.NUMCOL=cols
-			self.NUMROW=rows
+			self.NUMCOL=cols+2
+			self.NUMROW=rows+2
 			y=0
-			for y in range (0, rows):
+			for y in range (0, self.NUMROW):
 				x=0
-				for x in range (0, cols):
+				for x in range (0, self.NUMCOL):
 					self.add()
 					
 	def printCoords(self):
@@ -153,6 +160,5 @@ class Maze:
 			
 		print ("wall added")
 			
-	
 
         
