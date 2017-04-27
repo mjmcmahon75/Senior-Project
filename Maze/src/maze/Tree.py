@@ -25,7 +25,6 @@ class Node:
 		
 	
 	def retMark(self):
-		print("you made it! ",self.marks)
 		return self.marks
 	
 	def sever(self, direct):

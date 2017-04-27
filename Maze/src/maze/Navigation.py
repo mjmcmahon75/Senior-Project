@@ -11,13 +11,13 @@ from cozmo.objects import   CustomObject, CustomObjectMarkers, CustomObjectTypes
 import time
 import math
 from random import randint
-from _ast import Mult
-from locale import currency
+from numpy.core.defchararray import center
+
 
 #set number of columns
-MAZECOLS=2
+MAZECOLS=3
 #set number of rows here
-MAZEROWS=2
+MAZEROWS=3
 
 #set wall length here mm
 WALLLENGTH=160
@@ -34,7 +34,13 @@ ALGORITHM="PLEDGE"
 #set start row here
 STARTROW=0
 #set start col here
-STARTCOL=2
+STARTCOL=3
+
+#set tolerance here (degrees)
+ANGLETOLERANCE=1
+
+start=time.time()
+moveCount=0
 class NavStat:
     
     
@@ -110,7 +116,7 @@ class NavStat:
                 self.col=self.col-1
                 
         return validMove
-    
+        moveCount+=1
     
     def detectedWall(self):
         currNode=self.navMaze.get(self.col, self.row)
@@ -251,7 +257,7 @@ def cozmo_program(robot: cozmo.robot.Robot):
     Nav1=NavStat(STARTCOL,STARTROW,"down")
 
     # set cozmo headAngle
-    robot.set_head_angle(degrees(11)).wait_for_completed()
+    robot.set_head_angle(degrees(16)).wait_for_completed()
     #test wall 1 definition
     mazeWall=robot.world.define_custom_wall(CustomObjectTypes.CustomType02, CustomObjectMarkers.Circles2, WALLLENGTH,WALLHEIGHT,60,30,False)
     
@@ -266,19 +272,29 @@ def cozmo_program(robot: cozmo.robot.Robot):
         
         def __init__(self):
             self.complete=0
+            self.couresCorrect=0
+            self.preRot=None
+            self.postRot=None
+            self.error=cozmo.util.radians(0)
             
         def rotate90CW(self):
+            preTurn=robot.pose.rotation.angle_z
+            print (preTurn)
             Nav1.rotate90CW()
             robot.turn_in_place(degrees(-90)).wait_for_completed()
-            
+            postTurn=robot.pose.rotation.angle_z
+            self.courseCorrection(preTurn,postTurn)
             #self.courseCorrect()
             
             
             print("robot is facing", Nav1.orient)
             
         def rotate90CCW(self):
+            preTurn=robot.pose.rotation.angle_z
             Nav1.rotate90CCW()
             robot.turn_in_place(degrees(90)).wait_for_completed()
+            postTurn=robot.pose.rotation.angle_z
+            self.courseCorrection(preTurn,postTurn)
            
             #self.courseCorrect()
             print("robot is facing", Nav1.orient)
@@ -286,20 +302,21 @@ def cozmo_program(robot: cozmo.robot.Robot):
         def advance(self):
             validDest=Nav1.advance()
             if validDest==1: 
-                robot.drive_straight(distance_mm(WALLLENGTH+20),speed_mmps(50)).wait_for_completed()
+                robot.drive_straight(distance_mm(WALLLENGTH+12),speed_mmps(55)).wait_for_completed()
                 print("advancing")
+                print(robot.pose.position)
                 
         def retreat(self):
             validDest=Nav1.retreat()
             if validDest==1:
-                robot.drive_straight(distance_mm(-150),speed_mmps(50)).wait_for_completed()
+                robot.drive_straight(distance_mm(-150),speed_mmps(55)).wait_for_completed()
         
         def sense(self):
             if(Nav1.senseCheck()==1):
                 return 1
             
             self.nudgeBack()
-            walls=robot.world.wait_until_observe_num_objects(num=1, object_type=None, timeout=3)
+            walls=robot.world.wait_until_observe_num_objects(num=1, object_type=None, timeout=1)
             robot.drive_straight(distance_mm(NUDGE),speed_mmps(50)).wait_for_completed()
             detected=0
             wallPos=None
@@ -337,14 +354,44 @@ def cozmo_program(robot: cozmo.robot.Robot):
                     Nav1.setJunct(-1)
                     return 0
                 
-            
-                
-                
-                   
-        def reverse(self):
-            self.rotate90CCW()
-            self.rotate90CCW()
+        def courseCorrection(self, preRotation, postRotation):
+            testTurns=0
+            tolerance=cozmo.util.radians(ANGLETOLERANCE*math.pi/180)
+            negTol=cozmo.util.radians(-1*ANGLETOLERANCE*math.pi/180)
+            localPost=postRotation
+            localPre=preRotation
+            if(postRotation<cozmo.util.degrees(0)):
+                localPost=postRotation+degrees(360)
+                print("modified angle ",localPost)
+            if(preRotation<cozmo.util.degrees(0)):
+                localPre=preRotation+degrees(360)
+                print("modified angle ",localPre)   
         
+            print(localPre)
+            print(localPost)     
+            dif=localPost-localPre
+            print("difference ",dif )
+            if(dif>degrees(180)):
+                dif=dif-degrees(180)
+            elif(dif<degrees(-180)):
+                dif=dif+degrees(180)
+            
+            if dif<cozmo.util.radians(0):
+                self.error-=(cozmo.util.radians(math.pi/2)+dif)
+            else:
+                self.error+=(cozmo.util.radians(math.pi/2)-dif)
+                
+            print("error is: ",self.error)
+            print("difference ",dif )
+            if(self.error>tolerance or self.error<negTol):
+                print("correcting error")
+                robot.turn_in_place(self.error).wait_for_completed()
+                
+                print("correction angle: ",robot.pose.rotation.angle_z)
+                self.error=cozmo.util.radians(0)               
+                    
+            
+       
         
         #getting into camera range   
         def nudgeBack(self):
@@ -362,6 +409,7 @@ def cozmo_program(robot: cozmo.robot.Robot):
         driveFunct.advance()
         while end==0:
             if Nav1.isStart()==1:
+                driveFunct.preRot=robot.pose.angle_z
                 driveFunct.reverse()
             else:
                 end=Nav1.checkComplete()
@@ -411,6 +459,11 @@ def cozmo_program(robot: cozmo.robot.Robot):
                         else:
                             rightvalid=0
                             driveFunct.rotate90CCW()
+                            
+                    elif(rightvalid==0 and center==0 and leftvalid==0):
+                        driveFunct.rotate90CCW()
+                        driveFunct.rotate90CCW()
+                        validDir=1
                 
                 driveFunct.advance()
         
@@ -468,99 +521,10 @@ def cozmo_program(robot: cozmo.robot.Robot):
                         if(heading==360 or heading==-360):
                             heading=0
                         
-                        
-                    
-        
-                
 
-            
-    
-    
-    def junctionChoice(enterMarks):
-        bestPath="reverse"
-        leastMarks=2
-        mostMarks=0
-        localMarks=0
-        wallD=driveFunct.sense()
-        if(wallD==0):
-            localMarks=Nav1.getNeighborMarks()
-            if(localMarks<leastMarks):
-                leastMarks=localMarks
-                bestPath="straight"
-            if(localMarks>mostMarks):
-                mostMarks=localMarks
+       
+                        
                 
-    if ALGORITHM=="TREMAUX":
-        driveFunct.advance()
-        end=0
-        while(end==0):
-            end=Nav1.checkComplete()
-            testJunct=driveFunct.checkJunct()
-            print(testJunct)
-            if testJunct==1:
-                entryMarks=Nav1.markEntry()
-                junctionChoice(entryMarks)
-            else:
-                wallD=0
-                wallD=driveFunct.sense()
-                if(wallD==1):
-                    driveFunct.rotate90CCW()
-                    dirFound=0
-                    while dirFound==0:
-                        wallD=0
-                        wallD=driveFunct.sense()
-                        if(wallD==1):
-                            driveFunct.rotate90CW()
-                        else:
-                            dirFound=1
-                driveFunct.advance()
-            if end==1:
-                break
-        
-        wallD=0
-        driveFunct.rotate90CCW()
-        wallD=driveFunct.sense()
-        if(wallD==0):
-            localMarks=Nav1.getNeighborMarks()
-            driveFunct.rotate90CCW
-            if(localMarks<leastMarks):
-                leastMarks=localMarks
-                bestPath="left"
-            if(localMarks>mostMarks):
-                mostMarks=localMarks
-                
-        wallD=0
-        driveFunct.rotate90CW()
-        wallD=driveFunct.sense()
-        if(wallD==0):
-            localMarks=Nav1.getNeighborMarks()
-            driveFunct.rotate90CCW
-            if(localMarks<leastMarks):
-                leastMarks=localMarks
-                bestPath="right"
-                if(localMarks>mostMarks):
-                    mostMarks=localMarks
-                
-        if entryMarks<2 and mostMarks!=0:
-            bestPath="reverse"
-            
-        
-        if(bestPath=="reverse"):
-            driveFunct.reverse()
-            
-        elif(bestPath=="left"):
-            driveFunct.rotate90CW
-            
-        elif(bestPath=="right"):
-            driveFunct.rotate90CCW
-                
-        driveFunct.advance()
-        Nav1.iterateMarks()
-                
-            
-        
-            
-            
         
     #left-hand wall follow  
     if ALGORITHM=="WALLFOLLOW":
@@ -591,6 +555,12 @@ def cozmo_program(robot: cozmo.robot.Robot):
                         driveFunct.advance()
    
         
+    end=time.time()
+    elapsed=end-start
+    f=open("Timings.txt", "a+")
+    f.write("%s %d %d %5.2f \n" % (ALGORITHM, MAZECOLS, MAZEROWS, elapsed ))
+    f.close()
+    print("time elapsed ", elapsed)
     anim=robot.play_anim_trigger(cozmo.anim.Triggers.MajorWin)
     anim.wait_for_completed()    
             
